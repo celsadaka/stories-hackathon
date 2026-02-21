@@ -1,0 +1,2 @@
+model,training_samples,features,r2_in_sample,rmse_yoy_pct
+linear_regression_jan_runrate_yoy,14,"annual_sales_2025,overall_margin_pct,beverage_share_pct,cv_pct,anomaly_count_2025",0.806,13.9365

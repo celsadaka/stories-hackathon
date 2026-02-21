@@ -1,0 +1,3 @@
+# Streamlit config (add valid options as needed).
+# The first-run email prompt cannot be disabled in this Streamlit version; leave it blank and press Enter.
+[server]

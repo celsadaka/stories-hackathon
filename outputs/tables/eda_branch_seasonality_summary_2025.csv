@@ -1,0 +1,26 @@
+branch,avg_monthly_sales,std_monthly_sales,cv_pct,peak_month,peak_sales,trough_month,trough_sales,peak_to_trough_ratio
+Stories Event Starco,49776.03,161883.61,325.22,December,586645.65,January,0.0,0.0
+Stories Raouche,379683.06,876919.57,230.96,December,2815825.84,January,0.0,0.0
+Stories Kaslik,235046.15,530289.07,225.61,December,1583014.42,January,0.0,0.0
+Stories Sin El Fil,858210.46,1518137.21,176.9,November,4122138.15,January,0.0,0.0
+Stories Amioun,813838.69,1414375.66,173.79,October,3582319.53,January,0.0,0.0
+Stories Jbeil,2263514.52,3595049.0,158.83,October,10218320.22,January,0.0,0.0
+Stories Mansourieh,2250047.65,2669125.26,118.63,October,5978077.49,January,0.0,0.0
+Stories Aley,2541352.14,2793470.78,109.92,August,8565845.07,January,0.0,0.0
+Stories Unknown,1158821.95,1239579.77,106.97,April,3555273.33,August,0.0,0.0
+Stories Airport,3285689.8,3502265.86,106.59,October,8414672.7,January,0.0,0.0
+Stories Sour 2,1953484.13,2053575.92,105.12,August,5532578.53,January,0.0,0.0
+Stories Faqra,914782.79,831464.08,90.89,April,2298003.33,September,0.0,0.0
+Stories Ramlet El Bayda,4673724.16,2457615.2,52.58,August,7668109.92,January,0.0,0.0
+Stories Verdun,2094699.57,903225.59,43.12,August,3481408.42,June,449746.67,7.741
+Stories Lau,1336974.4,576108.35,43.09,April,2358631.33,June,398961.67,5.912
+Stories Saida,4583857.48,1576019.51,34.38,January,7263332.33,June,1323360.0,5.489
+Stories Batroun,4506122.04,1400870.73,31.09,August,6751770.29,June,1311240.0,5.149
+Stories Centro Mall,3128476.49,966889.09,30.91,August,4307333.34,June,924383.33,4.66
+Stories Le Mall,3905876.38,1187671.13,30.41,August,5452825.84,June,967783.33,5.634
+Stories Khaldeh,7012967.67,2094655.92,29.87,August,10661995.53,June,2262395.0,4.713
+Stories Bir Hasan,2863102.02,814063.25,28.43,July,3799740.25,June,744638.33,5.103
+Stories Bayada,4386961.54,1212894.31,27.65,August,5613038.75,June,1208190.0,4.646
+Stories Antelias,2552435.74,687212.85,26.92,April,3391741.33,June,728978.33,4.653
+Stories Ain El Mreisseh,9967738.5,2623565.47,26.32,April,13025923.33,June,2883403.33,4.518
+Stories Zalka,8997432.86,2339742.74,26.0,April,11182530.0,June,2504900.0,4.464

@@ -1,0 +1,6 @@
+archetype,member_count,menu_offer_strategy,pricing_strategy,operations_focus,primary_kpi
+Commuter Grab-and-Go,15,"Fast combos (coffee + pastry), pre-batched morning sets",Time-window bundles and loyalty refill pricing,"Queue speed, prep-before-rush, high-availability SKUs",Morning combo attach rate
+"High Volume, Low Margin",4,Re-bundle low-margin heroes with high-margin companions,Recipe-cost reset and minimum margin guardrails,Waste and COGS control,Gross margin %
+Social/Dessert Branch,3,Dessert + drink pair bundles and shareable upsells,Bundle discount with margin floor and premium toppings upsell,Merchandising and upsell scripts,Dessert-pair attach rate
+Premium Beverage-Focused,2,Signature beverage ladder and premium milk/syrup upgrades,Versioned pricing (good/better/best) and premium add-on pricing,Bar quality consistency and speed,Premium beverage mix %
+Seasonal/Tourist Branch,1,Seasonal campaigns and peak-month curated bundles,Dynamic seasonal offers by demand window,Flexible staffing and inventory by seasonality,Peak season conversion

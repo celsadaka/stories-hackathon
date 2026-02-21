@@ -1,0 +1,26 @@
+branch,annual_sales_2025,overall_margin_pct,beverage_share_pct,cv_pct,anomaly_count_2025,actual_jan_runrate_yoy_pct,predicted_jan_runrate_yoy_pct,growth_probability,predicted_direction,residual
+Stories Batroun,54073464.51,71.11,62.73,31.09,4,-6.22,-11.59,0.3591,Decline,5.37
+Stories Centro Mall,37541717.86,71.53,61.12,30.91,4,-3.48,-12.25,0.3515,Decline,8.77
+Stories Bir Hasan,34357224.24,71.66,59.28,28.43,3,-24.73,-12.58,0.3477,Decline,-12.15
+Stories Antelias,30629228.94,70.07,50.14,26.92,4,-23.0,-13.74,0.3347,Decline,-9.26
+Stories Bayada,52643538.48,71.03,56.22,27.65,4,-15.77,-15.0,0.3208,Decline,-0.77
+Stories Khaldeh,84155611.99,70.88,60.71,29.87,4,-12.12,-17.19,0.2974,Decline,5.07
+Stories Ain El Mreisseh,119612862.02,71.61,60.81,26.32,3,-29.28,-23.35,0.2373,Decline,-5.93
+Stories Zalka,107969194.27,70.5,54.73,26.0,3,-22.43,-23.88,0.2325,Decline,1.45
+Stories Le Mall,46870516.59,70.34,48.81,30.41,4,6.81,-24.26,0.2292,Decline,31.07
+Stories Saida,55006289.81,70.5,53.78,34.38,3,-52.8,-26.34,0.2113,Decline,-26.46
+Stories Lau,16043692.82,70.39,50.32,43.09,7,-43.45,-29.88,0.1833,Decline,-13.57
+Stories Verdun,25136394.81,72.3,58.71,43.12,4,-13.76,-32.54,0.1643,Decline,18.78
+Stories Ramlet El Bayda,56084689.92,72.31,59.8,52.58,5,,-48.11,0.0828,Decline,
+Stories Faqra,10977393.51,73.12,61.54,90.89,5,-100.0,-91.34,0.0103,Decline,-8.66
+Stories Unknown,13905863.33,69.74,55.35,106.97,5,-100.0,-106.28,0.0049,Decline,6.28
+Stories Airport,39428277.6,71.86,64.31,106.59,5,,-108.04,0.0045,Decline,
+Stories Aley,30496225.61,70.9,61.17,109.92,1,,-115.42,0.0031,Decline,
+Stories Sour 2,23441809.54,73.25,57.02,105.12,0,,-124.78,0.0019,Decline,
+Stories Mansourieh,27000571.83,70.54,49.13,118.63,5,,-135.69,0.0011,Decline,
+Stories Amioun,9766064.29,70.33,53.44,173.79,0,,-150.0,0.0006,Decline,
+Stories Event Starco,597312.31,75.97,78.16,325.22,3,,-150.0,0.0006,Decline,
+Stories Jbeil,27162174.22,72.78,52.36,158.83,1,,-150.0,0.0006,Decline,
+Stories Kaslik,2820553.76,70.03,54.34,225.61,1,,-150.0,0.0006,Decline,
+Stories Raouche,4556196.71,70.73,62.32,230.96,1,,-150.0,0.0006,Decline,
+Stories Sin El Fil,10298525.55,69.7,50.36,176.9,1,,-150.0,0.0006,Decline,

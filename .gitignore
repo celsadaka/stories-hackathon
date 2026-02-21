@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Secrets / local config
+.env
+.env.local
+*.pem
+
+# Optional: uncomment to avoid committing raw data (e.g. if sensitive or large)
+# data/raw/*.csv
