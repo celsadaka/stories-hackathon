@@ -17,7 +17,7 @@ This project answers a practical business question:
 
 ---
 
-##  What This Project Delivers
+## What This Project Delivers
 
 - ✅ Cleaned and normalized POS data from messy exports
 - ✅ Branch-level and product-level profitability analysis
@@ -32,7 +32,7 @@ This project answers a practical business question:
 
 ---
 
-##  Repository Structure
+## Repository Structure
 
 > Paths below are shown in both **relative repo format (recommended)** and the original local references where relevant.
 
@@ -50,7 +50,7 @@ This project answers a practical business question:
 
 ---
 
-##  Methodology
+## Methodology
 
 ### 1) Data Cleaning & Parsing
 - Parse **4 messy POS CSV files** with repeated headers/pages
@@ -77,13 +77,24 @@ The pipeline generates KPIs for:
 - **Profit/revenue concentration (Pareto patterns)**
 - **Location analysis segmentation** (branch archetypes + playbook)
 - **Optimization / ML**
-  - bundle offers for low-sales or decline-risk branches
+  - bundle offers for least-selling branches (bottom 40% by 2025 sales)
   - forecasting and branch performance prediction
 
 ---
 
-##  How to Run
+## How to Run
 
 ### Run the full analysis pipeline
 ```bash
 python3 src/run_analysis.py
+```
+
+### Generate static visuals
+```bash
+python3 src/make_visuals.py
+```
+
+### Launch dashboard
+```bash
+streamlit run dashboard.py
+```
