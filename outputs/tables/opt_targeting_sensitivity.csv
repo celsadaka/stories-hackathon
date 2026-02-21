@@ -1,0 +1,4 @@
+budget_percentile,target_count,sales_cutoff_min_selected,avg_priority_score_selected,avg_predicted_yoy_selected
+0.3,8,597312.31,0.924222,-93.3612
+0.4,10,597312.31,0.90468,-93.689
+0.5,13,597312.31,0.869935,-89.1315

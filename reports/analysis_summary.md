@@ -65,9 +65,11 @@
 
 ## Predictive Modeling (ML Layer)
 - Time-series forecast (trend x seasonality, January-anchored) projects 2026 network sales at 797891679 vs 920575395 in 2025 (YoY -13.3%).
-- Branch performance model (linear regression) uses margin/mix/volatility/anomaly features: R2=0.81, RMSE=13.94 YoY points (in-sample).
-- Model indicates broad contraction risk; least-negative branches are: Stories Batroun (-11.6%), Stories Centro Mall (-12.2%), Stories Bir Hasan (-12.6%)
-- Predicted highest-risk branches: Stories Kaslik (-150.0%), Stories Raouche (-150.0%), Stories Sin El Fil (-150.0%)
+- Walk-forward backtest on 2025 monthly data: trend RMSE=2165229.61, naive-last-month RMSE=1918057.21, moving-avg-3 RMSE=2049117.95.
+- Branch performance ridge model (margin/mix/volatility/anomaly features): in-sample RMSE=14.18, LOOCV RMSE=26.10 vs LOOCV baseline RMSE=32.42; LOOCV Spearman=-0.10.
+- Prediction bounds enforced at [-95%, 95%] with P90 absolute error band of ±43.2 YoY points.
+- Model indicates broad contraction risk; least-negative branches are: Stories Bir Hasan (-15.2%), Stories Batroun (-15.7%), Stories Antelias (-16.0%)
+- Predicted highest-risk branches: Stories Sin El Fil (-95.0%), Stories Sour 2 (-95.0%), Stories Unknown (-95.0%)
 - K-means segmentation identified 5 branch operating archetypes: Seasonal/Tourist Branch: 1 branches, Commuter Grab-and-Go: 15 branches, Premium Beverage-Focused: 2 branches, Social/Dessert Branch: 3 branches, High Volume, Low Margin: 4 branches.
 
 ## Location Analysis (Branch Segmentation)
@@ -76,9 +78,9 @@
 - Archetype playbooks were generated for offer design, pricing, and operations by location type.
 
 ## Optimization (Menu Engineering + Offer Engine)
-- ML prioritization flagged 19 branches as low-sales or decline-risk (bottom-sales threshold 17523316).
-- Generated 95 branch-level bundle offers with estimated total upside of +346747 revenue and +281404 gross profit units.
-- Most reusable product pair themes across branches: MANGO YOGHURT COMBO SMALL + MANGO YOGHURT COMBO MEDIUM (10 branches), ORIGINAL YOGHURT COMBO SMALL + ICED LATTE MEDIUM (9 branches), BLUEBERRY YOGHURT COMBO SMALL + CLASSIC CINNAMON ROLL LARGE (6 branches).
+- ML prioritization selected 10 branches by continuous priority score (70% low-sales intensity + 30% decline risk), with execution budget set to top 40% of branches.
+- Generated 50 branch-level bundle offers with expected upside of +74709 revenue and +61793 gross profit units (scenario profit range: +32858 to +92832).
+- Most reusable product pair themes across branches: MANGO YOGHURT COMBO SMALL + MANGO YOGHURT COMBO MEDIUM (6 branches), WATER + DOUBLE ESPRESSO (4 branches), ORIGINAL YOGHURT COMBO SMALL + MANGO YOGHURT COMBO SMALL (4 branches).
 - Offer logic: keep anchor products already strong in each branch, then attach high-affinity under-indexed pair items through combo pricing.
 
 ## Executive Insight

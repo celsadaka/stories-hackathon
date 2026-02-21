@@ -1,26 +1,26 @@
-branch,sales_2025_total,predicted_jan_runrate_yoy_pct,cluster_label,low_sales_flag,decline_risk_flag,target_flag,priority_score
-Stories Event Starco,597312.31,-150.0,Seasonal/Tourist Branch,1,1,1,2.5
-Stories Kaslik,2820553.76,-150.0,Commuter Grab-and-Go,1,1,1,2.5
-Stories Raouche,4556196.71,-150.0,Commuter Grab-and-Go,1,1,1,2.5
-Stories Amioun,9766064.29,-150.0,Commuter Grab-and-Go,1,1,1,2.5
-Stories Sin El Fil,10298525.55,-150.0,Commuter Grab-and-Go,1,1,1,2.5
-Stories Unknown,13905863.33,-106.28,Commuter Grab-and-Go,1,1,1,2.0628
-Stories Faqra,10977393.51,-91.34,Commuter Grab-and-Go,1,1,1,1.9134
-Stories Jbeil,27162174.22,-150.0,Commuter Grab-and-Go,0,1,1,1.5
-Stories Mansourieh,27000571.83,-135.69,Commuter Grab-and-Go,0,1,1,1.3569
-Stories Lau,16043692.82,-29.88,Commuter Grab-and-Go,1,1,1,1.2988
-Stories Sour 2,23441809.54,-124.78,Commuter Grab-and-Go,0,1,1,1.2478
-Stories Aley,30496225.61,-115.42,Premium Beverage-Focused,0,1,1,1.1542
-Stories Airport,39428277.6,-108.04,Premium Beverage-Focused,0,1,1,1.0804
-Stories Ramlet El Bayda,56084689.92,-48.11,"High Volume, Low Margin",0,1,1,0.4811
-Stories Verdun,25136394.81,-32.54,Commuter Grab-and-Go,0,1,1,0.3254
-Stories Saida,55006289.81,-26.34,Commuter Grab-and-Go,0,1,1,0.2634
-Stories Le Mall,46870516.59,-24.26,Social/Dessert Branch,0,1,1,0.2426
-Stories Zalka,107969194.27,-23.88,"High Volume, Low Margin",0,1,1,0.2388
-Stories Ain El Mreisseh,119612862.02,-23.35,"High Volume, Low Margin",0,1,1,0.2335
-Stories Khaldeh,84155611.99,-17.19,"High Volume, Low Margin",0,0,0,0.1719
-Stories Bayada,52643538.48,-15.0,Social/Dessert Branch,0,0,0,0.15
-Stories Antelias,30629228.94,-13.74,Commuter Grab-and-Go,0,0,0,0.1374
-Stories Bir Hasan,34357224.24,-12.58,Commuter Grab-and-Go,0,0,0,0.1258
-Stories Centro Mall,37541717.86,-12.25,Commuter Grab-and-Go,0,0,0,0.1225
-Stories Batroun,54073464.51,-11.59,Social/Dessert Branch,0,0,0,0.1159
+branch,sales_2025_total,predicted_jan_runrate_yoy_pct,cluster_label,low_sales_flag,decline_risk_flag,low_sales_intensity,decline_intensity,priority_score,target_rank,target_flag
+Stories Event Starco,597312.31,-95.0,Seasonal/Tourist Branch,1,1,0.995006,0.95,0.981504,1,1
+Stories Kaslik,2820553.76,-95.0,Commuter Grab-and-Go,1,1,0.976419,0.95,0.968494,2,1
+Stories Raouche,4556196.71,-95.0,Commuter Grab-and-Go,1,1,0.961909,0.95,0.958336,3,1
+Stories Amioun,9766064.29,-95.0,Commuter Grab-and-Go,1,1,0.918353,0.95,0.927847,4,1
+Stories Sin El Fil,10298525.55,-95.0,Commuter Grab-and-Go,1,1,0.913901,0.95,0.924731,5,1
+Stories Unknown,13905863.33,-95.0,Commuter Grab-and-Go,1,1,0.883743,0.95,0.90362,6,1
+Stories Faqra,10977393.51,-81.89,Commuter Grab-and-Go,1,1,0.908226,0.8189,0.881428,7,1
+Stories Sour 2,23441809.54,-95.0,Commuter Grab-and-Go,1,1,0.804019,0.95,0.847814,8,1
+Stories Mansourieh,27000571.83,-95.0,Commuter Grab-and-Go,0,1,0.774267,0.95,0.826987,9,1
+Stories Jbeil,27162174.22,-95.0,Commuter Grab-and-Go,0,1,0.772916,0.95,0.826041,10,1
+Stories Aley,30496225.61,-95.0,Premium Beverage-Focused,0,1,0.745042,0.95,0.80653,11,0
+Stories Airport,39428277.6,-95.0,Premium Beverage-Focused,0,1,0.670368,0.95,0.754257,12,0
+Stories Lau,16043692.82,-31.82,Commuter Grab-and-Go,1,1,0.86587,0.3182,0.701569,13,0
+Stories Verdun,25136394.81,-31.91,Commuter Grab-and-Go,1,1,0.789852,0.3191,0.648626,14,0
+Stories Antelias,30629228.94,-16.02,Commuter Grab-and-Go,0,0,0.74393,0.1602,0.568811,15,0
+Stories Bir Hasan,34357224.24,-15.16,Commuter Grab-and-Go,0,0,0.712763,0.1516,0.544414,16,0
+Stories Centro Mall,37541717.86,-16.11,Commuter Grab-and-Go,0,0,0.68614,0.1611,0.528628,17,0
+Stories Ramlet El Bayda,56084689.92,-44.35,"High Volume, Low Margin",0,1,0.531115,0.4435,0.50483,18,0
+Stories Le Mall,46870516.59,-23.27,Social/Dessert Branch,0,1,0.608148,0.2327,0.495514,19,0
+Stories Saida,55006289.81,-25.24,Commuter Grab-and-Go,0,1,0.540131,0.2524,0.453811,20,0
+Stories Bayada,52643538.48,-16.78,Social/Dessert Branch,0,0,0.559884,0.1678,0.442259,21,0
+Stories Batroun,54073464.51,-15.74,Social/Dessert Branch,0,0,0.547929,0.1574,0.430771,22,0
+Stories Khaldeh,84155611.99,-18.63,"High Volume, Low Margin",0,0,0.296433,0.1863,0.263393,23,0
+Stories Zalka,107969194.27,-21.0,"High Volume, Low Margin",0,1,0.097345,0.21,0.131141,24,0
+Stories Ain El Mreisseh,119612862.02,-20.59,"High Volume, Low Margin",0,1,0.0,0.2059,0.06177,25,0

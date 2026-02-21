@@ -231,7 +231,7 @@ def save_target_branches() -> str:
 
     plt.figure(figsize=(10, 6))
     plt.barh(df["branch"], df["priority_score"])
-    plt.title("Target Branch Priority (Low Sales + Decline Risk)")
+    plt.title("Target Branch Priority (Least-Selling Branches)")
     plt.xlabel("Priority Score")
     plt.gca().invert_yaxis()
     plt.tight_layout()

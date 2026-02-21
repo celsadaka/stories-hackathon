@@ -1,7 +1,7 @@
-feature,coefficient
-intercept,-31.445
-annual_sales_2025,-6.011852
-overall_margin_pct,-3.897481
-beverage_share_pct,5.909829
-cv_pct,-31.978806
-anomaly_count_2025,1.226139
+feature,coefficient,coefficient_bootstrap_std,stability_ratio_abscoef_over_std
+intercept,-30.730714,,
+annual_sales_2025,-3.452616,4.495642,0.767992
+overall_margin_pct,-2.225859,6.358189,0.350077
+beverage_share_pct,3.542923,6.292588,0.563031
+cv_pct,-26.48911,8.815137,3.004957
+anomaly_count_2025,0.311461,6.727245,0.046298

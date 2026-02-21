@@ -28,6 +28,19 @@ MONTH_ORDER = [
     "December",
 ]
 
+RANDOM_SEED = 42
+YOY_CLIP_MIN = -95.0
+YOY_CLIP_MAX = 95.0
+TARGETING_BUDGET_PERCENTILE = 0.40
+TARGET_PRIORITY_LOW_SALES_WEIGHT = 0.70
+TARGET_PRIORITY_DECLINE_WEIGHT = 0.30
+OFFER_MIN_SIMILARITY = 0.25
+OFFER_MIN_PAIR_MARGIN_PCT = 25.0
+OFFER_MIN_SUPPORT = 4  # minimum branch_overlap for product pairs
+RANKING_STABILITY_BOOTSTRAP = 50
+TOP_N_RISK = 5
+DECLINE_THRESHOLD_YOY = 0.0
+
 
 def ensure_dirs() -> None:
     os.makedirs(OUT_TABLES, exist_ok=True)
@@ -448,8 +461,91 @@ def kmeans_fit(matrix: np.ndarray, k: int = 3, max_iter: int = 50) -> Tuple[np.n
 
     return labels, centroids
 
+
+def mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    if y_true.size == 0:
+        return 0.0
+    return float(np.mean(np.abs(y_true - y_pred)))
+
+
+def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    if y_true.size == 0:
+        return 0.0
+    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+
+
+def smape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    if y_true.size == 0:
+        return 0.0
+    denom = (np.abs(y_true) + np.abs(y_pred)) / 2.0
+    mask = denom > 1e-9
+    if not np.any(mask):
+        return 0.0
+    return float(np.mean(np.abs(y_true[mask] - y_pred[mask]) / denom[mask]) * 100.0)
+
+
+def rank_with_ties(values: np.ndarray) -> np.ndarray:
+    if values.size == 0:
+        return np.array([], dtype=float)
+    order = np.argsort(values)
+    ranks = np.zeros(values.size, dtype=float)
+    i = 0
+    while i < values.size:
+        j = i
+        while j + 1 < values.size and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        avg_rank = (i + j) / 2.0 + 1.0
+        ranks[order[i : j + 1]] = avg_rank
+        i = j + 1
+    return ranks
+
+
+def spearman_corr(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    if y_true.size < 2:
+        return 0.0
+    r1 = rank_with_ties(y_true)
+    r2 = rank_with_ties(y_pred)
+    r1_centered = r1 - r1.mean()
+    r2_centered = r2 - r2.mean()
+    denom = float(np.sqrt(np.sum(r1_centered**2) * np.sum(r2_centered**2)))
+    if denom <= 1e-12:
+        return 0.0
+    return float(np.sum(r1_centered * r2_centered) / denom)
+
+
+def fit_linear_model(x_train: np.ndarray, y_train: np.ndarray, ridge: float = 1.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if x_train.size == 0:
+        return np.zeros(1), np.zeros(0), np.ones(0), np.zeros(0)
+
+    x_mean = x_train.mean(axis=0)
+    x_std = x_train.std(axis=0)
+    x_std = np.where(x_std == 0, 1.0, x_std)
+    x_train_z = (x_train - x_mean) / x_std
+    x_design = np.column_stack([np.ones(len(x_train_z)), x_train_z])
+
+    reg = np.eye(x_design.shape[1], dtype=float)
+    reg[0, 0] = 0.0
+    lhs = x_design.T @ x_design + ridge * reg
+    rhs = x_design.T @ y_train
+    try:
+        beta = np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        beta = np.linalg.lstsq(x_design, y_train, rcond=None)[0]
+
+    y_hat = x_design @ beta
+    return beta, x_mean, x_std, y_hat
+
+
+def predict_linear_model(beta: np.ndarray, x_mean: np.ndarray, x_std: np.ndarray, x_vec: np.ndarray) -> float:
+    if beta.size == 0:
+        return 0.0
+    x_z = (x_vec - x_mean) / x_std
+    return float(beta[0] + np.dot(beta[1:], x_z))
+
+
 def make_outputs() -> None:
     ensure_dirs()
+    np.random.seed(RANDOM_SEED)
 
     branch_year_totals, jan_by_year_branch, monthly_totals, clean_monthly_sales = parse_monthly_sales()
     category_summary = parse_category_summary()
@@ -1036,7 +1132,9 @@ def make_outputs() -> None:
         month_num = i + 1
         forecast_2026 = sum(r["forecast_final"] for r in ml_branch_monthly_forecast if r["month_num"] == month_num)
         sales_2025_month = monthly_totals.get(2025, {}).get(month, 0.0)
+        baseline_last_year_sales = sales_2025_month
         yoy_pct = pct_change(forecast_2026, sales_2025_month) if sales_2025_month > 0 else None
+        uplift_vs_baseline_pct = pct_change(forecast_2026, baseline_last_year_sales) if baseline_last_year_sales > 0 else None
         ml_network_forecast.append(
             {
                 "year": 2026,
@@ -1044,14 +1142,97 @@ def make_outputs() -> None:
                 "month_num": month_num,
                 "sales_2025": round(sales_2025_month, 2),
                 "forecast_sales_2026": round(forecast_2026, 2),
+                "baseline_last_year_sales": round(baseline_last_year_sales, 2),
                 "forecast_yoy_pct": "" if yoy_pct is None else round(yoy_pct, 2),
+                "uplift_vs_baseline_pct": "" if uplift_vs_baseline_pct is None else round(uplift_vs_baseline_pct, 2),
             }
         )
 
     write_csv(
         os.path.join(OUT_TABLES, "ml_network_monthly_forecast_2026.csv"),
         ml_network_forecast,
-        ["year", "month", "month_num", "sales_2025", "forecast_sales_2026", "forecast_yoy_pct"],
+        [
+            "year",
+            "month",
+            "month_num",
+            "sales_2025",
+            "forecast_sales_2026",
+            "baseline_last_year_sales",
+            "forecast_yoy_pct",
+            "uplift_vs_baseline_pct",
+        ],
+    )
+
+    # Walk-forward backtest on 2025 (months 4-12) for robustness.
+    forecast_backtest_rows: List[Dict] = []
+    for branch, month_map in sales_2025_by_branch.items():
+        seq = [float(month_map.get(m, 0.0)) for m in MONTH_ORDER]
+        for i in range(3, len(MONTH_ORDER)):
+            hist = seq[:i]
+            actual = seq[i]
+            intercept, slope = fit_linear_trend(hist)
+            trend_pred = max(intercept + slope * (i + 1), 0.0)
+            naive_pred = hist[-1] if hist else 0.0
+            ma3_pred = float(np.mean(hist[-3:])) if hist else 0.0
+            forecast_backtest_rows.append(
+                {
+                    "branch": branch,
+                    "month": MONTH_ORDER[i],
+                    "month_num": i + 1,
+                    "actual_sales": round(actual, 2),
+                    "trend_walkforward_pred": round(trend_pred, 2),
+                    "naive_last_month_pred": round(naive_pred, 2),
+                    "moving_avg_3_pred": round(ma3_pred, 2),
+                }
+            )
+
+    write_csv(
+        os.path.join(OUT_TABLES, "ml_forecast_backtest_2025.csv"),
+        forecast_backtest_rows,
+        [
+            "branch",
+            "month",
+            "month_num",
+            "actual_sales",
+            "trend_walkforward_pred",
+            "naive_last_month_pred",
+            "moving_avg_3_pred",
+        ],
+    )
+
+    bt_actual = np.array([r["actual_sales"] for r in forecast_backtest_rows], dtype=float)
+    bt_trend = np.array([r["trend_walkforward_pred"] for r in forecast_backtest_rows], dtype=float)
+    bt_naive = np.array([r["naive_last_month_pred"] for r in forecast_backtest_rows], dtype=float)
+    bt_ma3 = np.array([r["moving_avg_3_pred"] for r in forecast_backtest_rows], dtype=float)
+
+    forecast_backtest_metrics = [
+        {
+            "model": "trend_walkforward",
+            "samples": len(forecast_backtest_rows),
+            "mae": round(mae(bt_actual, bt_trend), 4),
+            "rmse": round(rmse(bt_actual, bt_trend), 4),
+            "smape_pct": round(smape(bt_actual, bt_trend), 4),
+        },
+        {
+            "model": "naive_last_month",
+            "samples": len(forecast_backtest_rows),
+            "mae": round(mae(bt_actual, bt_naive), 4),
+            "rmse": round(rmse(bt_actual, bt_naive), 4),
+            "smape_pct": round(smape(bt_actual, bt_naive), 4),
+        },
+        {
+            "model": "moving_avg_3",
+            "samples": len(forecast_backtest_rows),
+            "mae": round(mae(bt_actual, bt_ma3), 4),
+            "rmse": round(rmse(bt_actual, bt_ma3), 4),
+            "smape_pct": round(smape(bt_actual, bt_ma3), 4),
+        },
+    ]
+
+    write_csv(
+        os.path.join(OUT_TABLES, "ml_forecast_backtest_metrics_2025.csv"),
+        forecast_backtest_metrics,
+        ["model", "samples", "mae", "rmse", "smape_pct"],
     )
 
     sales_2025_total_by_branch = {r["branch"]: r["total_by_year"] for r in totals_2025}
@@ -1173,37 +1354,277 @@ def make_outputs() -> None:
         )
 
     train_rows = [r for r in feature_rows if r["actual_jan_runrate_yoy_pct"] is not None]
+    coef_bootstrap_std = np.zeros(len(feat_names), dtype=float)
+    pred_error_p90 = 0.0
+
     if train_rows:
         x_train = np.array([[r[n] for n in feat_names] for r in train_rows], dtype=float)
-        y_train = np.array([r["actual_jan_runrate_yoy_pct"] for r in train_rows], dtype=float)
-        y_train = np.clip(y_train, -150.0, 150.0)
-        x_mean = x_train.mean(axis=0)
-        x_std = x_train.std(axis=0)
-        x_std = np.where(x_std == 0, 1.0, x_std)
-        x_train_z = (x_train - x_mean) / x_std
-        x_design = np.column_stack([np.ones(len(x_train_z)), x_train_z])
-        beta = np.linalg.lstsq(x_design, y_train, rcond=None)[0]
-        y_hat = x_design @ beta
+        y_train_raw = np.array([r["actual_jan_runrate_yoy_pct"] for r in train_rows], dtype=float)
+        y_train = np.clip(y_train_raw, YOY_CLIP_MIN, YOY_CLIP_MAX)
+
+        beta, x_mean, x_std, y_hat = fit_linear_model(x_train, y_train, ridge=1.0)
         sse = float(np.sum((y_train - y_hat) ** 2))
         sst = float(np.sum((y_train - y_train.mean()) ** 2))
         model_r2 = (1.0 - sse / sst) if sst > 0 else 0.0
-        model_rmse = float(np.sqrt(np.mean((y_train - y_hat) ** 2)))
+        model_rmse = rmse(y_train, y_hat)
+        model_mae = mae(y_train, y_hat)
+
+        baseline_in = np.full_like(y_train, float(np.mean(y_train)))
+        baseline_rmse = rmse(y_train, baseline_in)
+        baseline_mae = mae(y_train, baseline_in)
+
+        loocv_preds: List[float] = []
+        loocv_actual: List[float] = []
+        loocv_baseline_preds: List[float] = []
+        loocv_rows: List[Dict] = []
+
+        for i in range(len(train_rows)):
+            mask = np.ones(len(train_rows), dtype=bool)
+            mask[i] = False
+            x_fold = x_train[mask]
+            y_fold = y_train[mask]
+
+            if len(y_fold) >= 2:
+                beta_i, mean_i, std_i, _ = fit_linear_model(x_fold, y_fold, ridge=1.0)
+                pred_i = predict_linear_model(beta_i, mean_i, std_i, x_train[i])
+                baseline_i = float(np.mean(y_fold))
+            else:
+                pred_i = float(np.mean(y_train))
+                baseline_i = float(np.mean(y_train))
+
+            pred_i = float(np.clip(pred_i, YOY_CLIP_MIN, YOY_CLIP_MAX))
+            loocv_preds.append(pred_i)
+            loocv_actual.append(float(y_train[i]))
+            loocv_baseline_preds.append(baseline_i)
+            loocv_rows.append(
+                {
+                    "branch": train_rows[i]["branch"],
+                    "actual_yoy_pct": round(float(y_train[i]), 4),
+                    "predicted_yoy_pct_loocv": round(pred_i, 4),
+                    "baseline_mean_yoy_pct_loocv": round(baseline_i, 4),
+                }
+            )
+
+        loocv_actual_arr = np.array(loocv_actual, dtype=float)
+        loocv_pred_arr = np.array(loocv_preds, dtype=float)
+        loocv_baseline_arr = np.array(loocv_baseline_preds, dtype=float)
+
+        model_loocv_rmse = rmse(loocv_actual_arr, loocv_pred_arr)
+        model_loocv_mae = mae(loocv_actual_arr, loocv_pred_arr)
+        baseline_loocv_rmse = rmse(loocv_actual_arr, loocv_baseline_arr)
+        baseline_loocv_mae = mae(loocv_actual_arr, loocv_baseline_arr)
+        model_loocv_spearman = spearman_corr(loocv_actual_arr, loocv_pred_arr)
+
+        abs_err = np.abs(loocv_actual_arr - loocv_pred_arr)
+        pred_error_p90 = float(np.percentile(abs_err, 90)) if abs_err.size > 0 else 0.0
+
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_branch_performance_loocv_predictions.csv"),
+            loocv_rows,
+            ["branch", "actual_yoy_pct", "predicted_yoy_pct_loocv", "baseline_mean_yoy_pct_loocv"],
+        )
+
+        # Coefficient stability under bootstrap resampling.
+        coef_samples = []
+        n_bootstrap = 250
+        for _ in range(n_bootstrap):
+            idx = np.random.choice(len(train_rows), size=len(train_rows), replace=True)
+            beta_b, _, _, _ = fit_linear_model(x_train[idx], y_train[idx], ridge=1.0)
+            coef_samples.append(beta_b[1:])
+        coef_mat = np.array(coef_samples, dtype=float)
+        coef_bootstrap_std = np.std(coef_mat, axis=0)
+        coef_stability_score = float(np.median(np.abs(beta[1:]) / np.maximum(coef_bootstrap_std, 1e-9)))
+
+        # 1) Ranking stability: bootstrap rankings, pairwise Spearman, top-N overlap
+        x_all = np.array([[r[n] for n in feat_names] for r in feature_rows], dtype=float)
+        branch_order = [r["branch"] for r in feature_rows]
+        n_branches = len(branch_order)
+        bootstrap_rankings: List[np.ndarray] = []
+        n_ranking_boot = min(RANKING_STABILITY_BOOTSTRAP, max(20, len(train_rows) * 2))
+        for _ in range(n_ranking_boot):
+            idx = np.random.choice(len(train_rows), size=len(train_rows), replace=True)
+            beta_b, mean_b, std_b, _ = fit_linear_model(x_train[idx], y_train[idx], ridge=1.0)
+            preds = np.array([
+                float(np.clip(predict_linear_model(beta_b, mean_b, std_b, x_all[j]), YOY_CLIP_MIN, YOY_CLIP_MAX))
+                for j in range(n_branches)
+            ], dtype=float)
+            ranks_b = rank_with_ties(preds)
+            bootstrap_rankings.append(ranks_b)
+        ranking_matrix = np.array(bootstrap_rankings, dtype=float)
+        mean_pairwise_spearman = 0.0
+        pair_count = 0
+        for i in range(n_ranking_boot):
+            for j in range(i + 1, n_ranking_boot):
+                mean_pairwise_spearman += spearman_corr(ranking_matrix[i], ranking_matrix[j])
+                pair_count += 1
+        if pair_count > 0:
+            mean_pairwise_spearman /= pair_count
+        top_n = min(TOP_N_RISK, n_branches)
+        top5_sets: List[set] = []
+        for b in range(n_ranking_boot):
+            order_b = np.argsort(ranking_matrix[b])
+            top5_sets.append(set(order_b[:top_n]))
+        mean_top5_overlap = 0.0
+        for i in range(n_ranking_boot):
+            for j in range(i + 1, n_ranking_boot):
+                mean_top5_overlap += len(top5_sets[i] & top5_sets[j]) / top_n
+        overlap_pair_count = n_ranking_boot * (n_ranking_boot - 1) // 2
+        if overlap_pair_count > 0:
+            mean_top5_overlap /= overlap_pair_count
+        in_top5_count = np.zeros(n_branches, dtype=int)
+        for b in range(n_ranking_boot):
+            order_b = np.argsort(ranking_matrix[b])
+            for pos in range(top_n):
+                in_top5_count[order_b[pos]] += 1
+        mean_rank = np.mean(ranking_matrix, axis=0)
+        rank_std = np.std(ranking_matrix, axis=0)
+        ranking_stability_rows: List[Dict] = []
+        for j, br in enumerate(branch_order):
+            ranking_stability_rows.append({
+                "branch": br,
+                "mean_rank": round(float(mean_rank[j]), 2),
+                "rank_std": round(float(rank_std[j]), 2),
+                "in_top5_risk_count": int(in_top5_count[j]),
+                "in_top5_risk_pct": round(100.0 * in_top5_count[j] / n_ranking_boot, 1),
+                "mean_pairwise_spearman": "",
+                "mean_top5_overlap": "",
+            })
+        ranking_stability_rows.append({
+            "branch": "(summary)",
+            "mean_rank": "",
+            "rank_std": "",
+            "in_top5_risk_count": "",
+            "in_top5_risk_pct": "",
+            "mean_pairwise_spearman": round(mean_pairwise_spearman, 4),
+            "mean_top5_overlap": round(mean_top5_overlap, 4),
+        })
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_branch_ranking_stability.csv"),
+            ranking_stability_rows,
+            ["branch", "mean_rank", "rank_std", "in_top5_risk_count", "in_top5_risk_pct", "mean_pairwise_spearman", "mean_top5_overlap"],
+        )
+
+        # 2) Reduced-feature model variant (top 2 and top 3 by |coefficient|)
+        abs_coef = np.abs(beta[1:])
+        top2_idx = np.argsort(abs_coef)[-2:][::-1]
+        top3_idx = np.argsort(abs_coef)[-3:][::-1]
+        reduced_feat_sets = [
+            ([feat_names[i] for i in top2_idx], "top2"),
+            ([feat_names[i] for i in top3_idx], "top3"),
+        ]
+        variant_rows: List[Dict] = []
+        full_loocv_rmse = model_loocv_rmse
+        full_loocv_spearman = model_loocv_spearman
+        best_spearman = full_loocv_spearman
+        best_variant = "full"
+        for feat_subset, label in reduced_feat_sets:
+            x_sub = np.array([[r[n] for n in feat_subset] for r in train_rows], dtype=float)
+            y_sub = np.array([r["actual_jan_runrate_yoy_pct"] for r in train_rows], dtype=float)
+            y_sub = np.clip(y_sub, YOY_CLIP_MIN, YOY_CLIP_MAX)
+            loocv_p: List[float] = []
+            loocv_a: List[float] = []
+            for i in range(len(train_rows)):
+                mask = np.ones(len(train_rows), dtype=bool)
+                mask[i] = False
+                x_f = x_sub[mask]
+                y_f = y_sub[mask]
+                if len(y_f) >= 2:
+                    beta_s, mean_s, std_s, _ = fit_linear_model(x_f, y_f, ridge=1.0)
+                    pred_s = predict_linear_model(beta_s, mean_s, std_s, x_sub[i])
+                else:
+                    pred_s = float(np.mean(y_sub))
+                pred_s = float(np.clip(pred_s, YOY_CLIP_MIN, YOY_CLIP_MAX))
+                loocv_p.append(pred_s)
+                loocv_a.append(float(y_sub[i]))
+            arr_a = np.array(loocv_a, dtype=float)
+            arr_p = np.array(loocv_p, dtype=float)
+            rmse_s = rmse(arr_a, arr_p)
+            spear_s = spearman_corr(arr_a, arr_p)
+            variant_rows.append({
+                "model": label,
+                "features": ",".join(feat_subset),
+                "loocv_rmse_yoy_pct": round(rmse_s, 4),
+                "loocv_spearman_rank_corr": round(spear_s, 4),
+                "selected_by_stability": False,
+            })
+            if spear_s > best_spearman or (spear_s == best_spearman and rmse_s < full_loocv_rmse):
+                best_spearman = spear_s
+                best_variant = label
+        variant_rows.insert(0, {
+            "model": "full",
+            "features": ",".join(feat_names),
+            "loocv_rmse_yoy_pct": round(full_loocv_rmse, 4),
+            "loocv_spearman_rank_corr": round(full_loocv_spearman, 4),
+            "selected_by_stability": best_variant == "full",
+        })
+        for r in variant_rows:
+            r["selected_by_stability"] = r["model"] == best_variant
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_branch_model_variant_comparison.csv"),
+            variant_rows,
+            ["model", "features", "loocv_rmse_yoy_pct", "loocv_spearman_rank_corr", "selected_by_stability"],
+        )
+
+        # 3) Feature stability diagnostics (sign variance across bootstrap)
+        feature_stability_rows: List[Dict] = []
+        for i, feat in enumerate(feat_names):
+            coef_vals = coef_mat[:, i]
+            pct_positive = 100.0 * np.sum(coef_vals > 0) / len(coef_vals) if len(coef_vals) else 0.0
+            sign_stable = 1 if (np.all(coef_vals >= 0) or np.all(coef_vals <= 0)) else 0
+            feature_stability_rows.append({
+                "feature": feat,
+                "coefficient_mean": round(float(beta[i + 1]), 6),
+                "coefficient_std": round(float(coef_bootstrap_std[i]), 6),
+                "sign_stable": sign_stable,
+                "pct_positive_bootstrap": round(pct_positive, 1),
+            })
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_feature_stability_diagnostics.csv"),
+            feature_stability_rows,
+            ["feature", "coefficient_mean", "coefficient_std", "sign_stable", "pct_positive_bootstrap"],
+        )
+
     else:
         x_mean = np.zeros(len(feat_names), dtype=float)
         x_std = np.ones(len(feat_names), dtype=float)
         beta = np.zeros(len(feat_names) + 1, dtype=float)
         model_r2 = 0.0
         model_rmse = 0.0
+        model_mae = 0.0
+        baseline_rmse = 0.0
+        baseline_mae = 0.0
+        model_loocv_rmse = 0.0
+        model_loocv_mae = 0.0
+        baseline_loocv_rmse = 0.0
+        baseline_loocv_mae = 0.0
+        model_loocv_spearman = 0.0
+        coef_stability_score = 0.0
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_branch_ranking_stability.csv"),
+            [{"branch": "(summary)", "mean_rank": "", "rank_std": "", "in_top5_risk_count": "", "in_top5_risk_pct": "", "mean_pairwise_spearman": 0.0, "mean_top5_overlap": 0.0}],
+            ["branch", "mean_rank", "rank_std", "in_top5_risk_count", "in_top5_risk_pct", "mean_pairwise_spearman", "mean_top5_overlap"],
+        )
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_branch_model_variant_comparison.csv"),
+            [{"model": "full", "features": ",".join(feat_names), "loocv_rmse_yoy_pct": 0.0, "loocv_spearman_rank_corr": 0.0, "selected_by_stability": True}],
+            ["model", "features", "loocv_rmse_yoy_pct", "loocv_spearman_rank_corr", "selected_by_stability"],
+        )
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_feature_stability_diagnostics.csv"),
+            [],
+            ["feature", "coefficient_mean", "coefficient_std", "sign_stable", "pct_positive_bootstrap"],
+        )
 
     ml_branch_performance_prediction: List[Dict] = []
     for r in feature_rows:
         x_vec = np.array([r[n] for n in feat_names], dtype=float)
-        x_z = (x_vec - x_mean) / x_std
-        pred_yoy_raw = float(beta[0] + np.dot(beta[1:], x_z))
-        pred_yoy = float(np.clip(pred_yoy_raw, -150.0, 150.0))
+        pred_yoy_raw = predict_linear_model(beta, x_mean, x_std, x_vec)
+        pred_yoy = float(np.clip(pred_yoy_raw, YOY_CLIP_MIN, YOY_CLIP_MAX))
         growth_prob = logistic_prob(pred_yoy, scale=20.0)
         actual = r["actual_jan_runrate_yoy_pct"]
         residual = (actual - pred_yoy) if actual is not None else None
+        pred_low = float(np.clip(pred_yoy - pred_error_p90, YOY_CLIP_MIN, YOY_CLIP_MAX))
+        pred_high = float(np.clip(pred_yoy + pred_error_p90, YOY_CLIP_MIN, YOY_CLIP_MAX))
 
         ml_branch_performance_prediction.append(
             {
@@ -1215,6 +1636,9 @@ def make_outputs() -> None:
                 "anomaly_count_2025": int(r["anomaly_count_2025"]),
                 "actual_jan_runrate_yoy_pct": "" if actual is None else round(actual, 2),
                 "predicted_jan_runrate_yoy_pct": round(pred_yoy, 2),
+                "predicted_jan_runrate_yoy_pct_unbounded": round(pred_yoy_raw, 2),
+                "prediction_interval_low": round(pred_low, 2),
+                "prediction_interval_high": round(pred_high, 2),
                 "growth_probability": round(growth_prob, 4),
                 "predicted_direction": "Grow" if pred_yoy >= 0 else "Decline",
                 "residual": "" if residual is None else round(residual, 2),
@@ -1233,33 +1657,111 @@ def make_outputs() -> None:
             "anomaly_count_2025",
             "actual_jan_runrate_yoy_pct",
             "predicted_jan_runrate_yoy_pct",
+            "predicted_jan_runrate_yoy_pct_unbounded",
+            "prediction_interval_low",
+            "prediction_interval_high",
             "growth_probability",
             "predicted_direction",
             "residual",
         ],
     )
 
-    coef_rows = [{"feature": "intercept", "coefficient": round(float(beta[0]), 6)}]
+    # 4) Decision-level evaluation: precision/recall for decline targeting
+    rows_with_actual = [r for r in ml_branch_performance_prediction if r["actual_jan_runrate_yoy_pct"] != ""]
+    if rows_with_actual:
+        total_actually_declined = sum(1 for r in rows_with_actual if float(r["actual_jan_runrate_yoy_pct"]) < DECLINE_THRESHOLD_YOY)
+        sorted_by_risk = sorted(rows_with_actual, key=lambda r: float(r["predicted_jan_runrate_yoy_pct"]))
+        decision_rows: List[Dict] = []
+        max_k = min(15, len(sorted_by_risk))
+        for k in range(1, max_k + 1):
+            top_k = sorted_by_risk[:k]
+            n_declined_in_k = sum(1 for r in top_k if float(r["actual_jan_runrate_yoy_pct"]) < DECLINE_THRESHOLD_YOY)
+            precision_k = (n_declined_in_k / k) if k > 0 else 0.0
+            recall_k = (n_declined_in_k / total_actually_declined) if total_actually_declined > 0 else 0.0
+            decision_rows.append({
+                "k": k,
+                "n_targeted": k,
+                "n_actually_declined_in_targeted": n_declined_in_k,
+                "total_actually_declined": total_actually_declined,
+                "precision": round(precision_k, 4),
+                "recall": round(recall_k, 4),
+            })
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_decision_precision_metrics.csv"),
+            decision_rows,
+            ["k", "n_targeted", "n_actually_declined_in_targeted", "total_actually_declined", "precision", "recall"],
+        )
+    else:
+        write_csv(
+            os.path.join(OUT_TABLES, "ml_decision_precision_metrics.csv"),
+            [],
+            ["k", "n_targeted", "n_actually_declined_in_targeted", "total_actually_declined", "precision", "recall"],
+        )
+
+    coef_rows = [{
+        "feature": "intercept",
+        "coefficient": round(float(beta[0]), 6),
+        "coefficient_bootstrap_std": "",
+        "stability_ratio_abscoef_over_std": "",
+    }]
     for i, feat in enumerate(feat_names):
-        coef_rows.append({"feature": feat, "coefficient": round(float(beta[i + 1]), 6)})
+        coef = float(beta[i + 1])
+        coef_std = float(coef_bootstrap_std[i]) if i < len(coef_bootstrap_std) else 0.0
+        stability_ratio = (abs(coef) / coef_std) if coef_std > 1e-9 else 0.0
+        coef_rows.append(
+            {
+                "feature": feat,
+                "coefficient": round(coef, 6),
+                "coefficient_bootstrap_std": round(coef_std, 6),
+                "stability_ratio_abscoef_over_std": round(stability_ratio, 6),
+            }
+        )
     write_csv(
         os.path.join(OUT_TABLES, "ml_branch_performance_coefficients.csv"),
         coef_rows,
-        ["feature", "coefficient"],
+        ["feature", "coefficient", "coefficient_bootstrap_std", "stability_ratio_abscoef_over_std"],
     )
 
     write_csv(
         os.path.join(OUT_TABLES, "ml_branch_performance_model_metrics.csv"),
         [
             {
-                "model": "linear_regression_jan_runrate_yoy",
+                "model": "ridge_regression_jan_runrate_yoy",
                 "training_samples": len(train_rows),
                 "features": ",".join(feat_names),
                 "r2_in_sample": round(model_r2, 4),
                 "rmse_yoy_pct": round(model_rmse, 4),
+                "mae_yoy_pct": round(model_mae, 4),
+                "baseline_rmse_yoy_pct": round(baseline_rmse, 4),
+                "baseline_mae_yoy_pct": round(baseline_mae, 4),
+                "loocv_rmse_yoy_pct": round(model_loocv_rmse, 4),
+                "loocv_mae_yoy_pct": round(model_loocv_mae, 4),
+                "loocv_baseline_rmse_yoy_pct": round(baseline_loocv_rmse, 4),
+                "loocv_baseline_mae_yoy_pct": round(baseline_loocv_mae, 4),
+                "loocv_spearman_rank_corr": round(model_loocv_spearman, 4),
+                "prediction_abs_error_p90": round(pred_error_p90, 4),
+                "coef_stability_score_median": round(coef_stability_score, 4),
+                "prediction_bounds": f"[{YOY_CLIP_MIN:.0f},{YOY_CLIP_MAX:.0f}]",
             }
         ],
-        ["model", "training_samples", "features", "r2_in_sample", "rmse_yoy_pct"],
+        [
+            "model",
+            "training_samples",
+            "features",
+            "r2_in_sample",
+            "rmse_yoy_pct",
+            "mae_yoy_pct",
+            "baseline_rmse_yoy_pct",
+            "baseline_mae_yoy_pct",
+            "loocv_rmse_yoy_pct",
+            "loocv_mae_yoy_pct",
+            "loocv_baseline_rmse_yoy_pct",
+            "loocv_baseline_mae_yoy_pct",
+            "loocv_spearman_rank_corr",
+            "prediction_abs_error_p90",
+            "coef_stability_score_median",
+            "prediction_bounds",
+        ],
     )
 
     # ML 3: Branch segmentation (k-means clustering + archetype naming)
@@ -1533,17 +2035,31 @@ def make_outputs() -> None:
 
     # Optimization ML: menu engineering + branch offer engine
     branch_sales_values = [float(v) for v in sales_2025_total_by_branch.values() if v > 0]
-    low_sales_threshold = float(np.percentile(branch_sales_values, 30)) if branch_sales_values else 0.0
+    sorted_branch_sales = sorted(
+        [(b, float(v)) for b, v in sales_2025_total_by_branch.items() if float(v) > 0],
+        key=lambda x: x[1],
+    )
+    budget_target_count = max(1, int(np.ceil(len(sorted_branch_sales) * TARGETING_BUDGET_PERCENTILE))) if sorted_branch_sales else 0
+    low_sales_branches = {b for b, _ in sorted_branch_sales[:budget_target_count]}
+    low_sales_threshold = sorted_branch_sales[budget_target_count - 1][1] if budget_target_count > 0 else 0.0
+    max_sales_value = max(branch_sales_values) if branch_sales_values else 1.0
     pred_map = {r["branch"]: float(r["predicted_jan_runrate_yoy_pct"]) for r in ml_branch_performance_prediction}
     cluster_map = {r["branch"]: r["cluster_label"] for r in ml_branch_clusters}
 
     opt_target_branches: List[Dict] = []
     for branch, sales_val in sales_2025_total_by_branch.items():
         pred_yoy = float(pred_map.get(branch, 0.0))
-        low_sales_flag = 1 if sales_val <= low_sales_threshold else 0
+        low_sales_flag = 1 if branch in low_sales_branches else 0
         decline_risk_flag = 1 if pred_yoy <= -20.0 else 0
-        target_flag = 1 if (low_sales_flag == 1 or decline_risk_flag == 1) else 0
-        priority_score = round((1.0 if low_sales_flag else 0.0) + max(0.0, min((-pred_yoy) / 100.0, 2.0)), 4)
+
+        low_sales_intensity = 1.0 - min(max(float(sales_val) / max_sales_value, 0.0), 1.0)
+        decline_intensity = min(max((-pred_yoy) / 100.0, 0.0), 1.0)
+        priority_score = round(
+            TARGET_PRIORITY_LOW_SALES_WEIGHT * low_sales_intensity
+            + TARGET_PRIORITY_DECLINE_WEIGHT * decline_intensity,
+            6,
+        )
+
         opt_target_branches.append(
             {
                 "branch": branch,
@@ -1552,14 +2068,22 @@ def make_outputs() -> None:
                 "cluster_label": cluster_map.get(branch, ""),
                 "low_sales_flag": low_sales_flag,
                 "decline_risk_flag": decline_risk_flag,
-                "target_flag": target_flag,
+                "low_sales_intensity": round(low_sales_intensity, 6),
+                "decline_intensity": round(decline_intensity, 6),
                 "priority_score": priority_score,
             }
         )
 
+    ranked_targets = sorted(opt_target_branches, key=lambda r: (r["priority_score"], -r["sales_2025_total"]), reverse=True)
+    selected_branches = {r["branch"] for r in ranked_targets[:budget_target_count]}
+
+    for rank, row in enumerate(ranked_targets, start=1):
+        row["target_rank"] = rank
+        row["target_flag"] = 1 if row["branch"] in selected_branches else 0
+
     write_csv(
         os.path.join(OUT_TABLES, "opt_target_branches.csv"),
-        sorted(opt_target_branches, key=lambda r: (r["target_flag"], r["priority_score"], -r["sales_2025_total"]), reverse=True),
+        ranked_targets,
         [
             "branch",
             "sales_2025_total",
@@ -1567,8 +2091,40 @@ def make_outputs() -> None:
             "cluster_label",
             "low_sales_flag",
             "decline_risk_flag",
-            "target_flag",
+            "low_sales_intensity",
+            "decline_intensity",
             "priority_score",
+            "target_rank",
+            "target_flag",
+        ],
+    )
+
+    target_sensitivity_rows: List[Dict] = []
+    for pct in [0.30, 0.40, 0.50]:
+        k = max(1, int(np.ceil(len(ranked_targets) * pct))) if ranked_targets else 0
+        selected = ranked_targets[:k]
+        cutoff_sales = min((r["sales_2025_total"] for r in selected), default=0.0)
+        avg_priority = float(np.mean([r["priority_score"] for r in selected])) if selected else 0.0
+        avg_pred_yoy = float(np.mean([r["predicted_jan_runrate_yoy_pct"] for r in selected])) if selected else 0.0
+        target_sensitivity_rows.append(
+            {
+                "budget_percentile": round(pct, 2),
+                "target_count": len(selected),
+                "sales_cutoff_min_selected": round(cutoff_sales, 2),
+                "avg_priority_score_selected": round(avg_priority, 6),
+                "avg_predicted_yoy_selected": round(avg_pred_yoy, 4),
+            }
+        )
+
+    write_csv(
+        os.path.join(OUT_TABLES, "opt_targeting_sensitivity.csv"),
+        target_sensitivity_rows,
+        [
+            "budget_percentile",
+            "target_count",
+            "sales_cutoff_min_selected",
+            "avg_priority_score_selected",
+            "avg_predicted_yoy_selected",
         ],
     )
 
@@ -1648,7 +2204,7 @@ def make_outputs() -> None:
             for b in branch_list:
                 if branch_product_revenue.get(b, {}).get(p1, 0.0) > 0 and branch_product_revenue.get(b, {}).get(p2, 0.0) > 0:
                     overlap += 1
-            if overlap < 4:
+            if overlap < OFFER_MIN_SUPPORT:
                 continue
 
             pair_margin = (m1["margin_pct"] + m2["margin_pct"]) / 2.0
@@ -1690,8 +2246,31 @@ def make_outputs() -> None:
         ],
     )
 
+    # 5) Affinity sensitivity: pairs passing for each (min_similarity, min_support)
+    affinity_sensitivity_rows: List[Dict] = []
+    for min_sim in [0.20, 0.25, 0.30, 0.35, 0.40]:
+        for min_sup in [4, 6, 8, 10]:
+            pairs_passing = sum(
+                1 for r in opt_product_pair_affinity
+                if float(r["similarity"]) >= min_sim and int(r["branch_overlap"]) >= min_sup
+            )
+            affinity_sensitivity_rows.append({
+                "min_similarity": round(min_sim, 2),
+                "min_support": min_sup,
+                "pairs_passing": pairs_passing,
+            })
+    write_csv(
+        os.path.join(OUT_TABLES, "opt_affinity_sensitivity.csv"),
+        affinity_sensitivity_rows,
+        ["min_similarity", "min_support", "pairs_passing"],
+    )
+
     pair_options = defaultdict(list)
     for row in opt_product_pair_affinity:
+        sim_val = float(row["similarity"])
+        support_val = int(row["branch_overlap"])
+        if sim_val < OFFER_MIN_SIMILARITY or support_val < OFFER_MIN_SUPPORT:
+            continue
         pair_options[row["product_a"]].append(
             {
                 "pair_product": row["product_b"],
@@ -1700,6 +2279,7 @@ def make_outputs() -> None:
                 "pair_margin_pct": row["pair_margin_pct"],
                 "anchor_category": row["category_a"],
                 "pair_category": row["category_b"],
+                "branch_overlap": support_val,
             }
         )
         pair_options[row["product_b"]].append(
@@ -1710,6 +2290,7 @@ def make_outputs() -> None:
                 "pair_margin_pct": row["pair_margin_pct"],
                 "anchor_category": row["category_b"],
                 "pair_category": row["category_a"],
+                "branch_overlap": support_val,
             }
         )
 
@@ -1754,12 +2335,35 @@ def make_outputs() -> None:
                 if under_index_gap <= 0:
                     continue
 
+                if float(op["pair_similarity"]) < OFFER_MIN_SIMILARITY:
+                    continue
+                if int(op.get("branch_overlap", 0)) < OFFER_MIN_SUPPORT:
+                    continue
+                if float(op["pair_margin_pct"]) < OFFER_MIN_PAIR_MARGIN_PCT:
+                    continue
+
                 attach_uplift_pct = float(np.clip(under_index_gap * 120.0, 1.5, 9.0))
                 base_exposed_revenue = max(anchor_rev * 0.25, 1.0)
-                estimated_incremental_revenue = base_exposed_revenue * (attach_uplift_pct / 100.0) * max(op["pair_similarity"], 0.2)
-                margin_factor = float(np.clip(op["pair_margin_pct"] / 100.0, 0.25, 0.9))
-                estimated_incremental_profit = estimated_incremental_revenue * margin_factor
-                offer_score = estimated_incremental_profit * (1.0 + op["pair_similarity"])
+
+                sim_factor = max(op["pair_similarity"], 0.2)
+                rev_base = base_exposed_revenue * (attach_uplift_pct / 100.0) * sim_factor
+                margin_base = float(np.clip(op["pair_margin_pct"] / 100.0, 0.25, 0.9))
+                profit_base = rev_base * margin_base
+
+                attach_low = max(attach_uplift_pct * 0.60, 0.5)
+                attach_high = min(attach_uplift_pct * 1.40, 14.0)
+                rev_low = base_exposed_revenue * (attach_low / 100.0) * sim_factor
+                rev_high = base_exposed_revenue * (attach_high / 100.0) * sim_factor
+
+                margin_low = float(np.clip(margin_base - 0.08, 0.15, 0.85))
+                margin_high = float(np.clip(margin_base + 0.08, 0.20, 0.92))
+                profit_low = rev_low * margin_low
+                profit_high = rev_high * margin_high
+
+                expected_incremental_revenue = 0.25 * rev_low + 0.50 * rev_base + 0.25 * rev_high
+                expected_incremental_profit = 0.25 * profit_low + 0.50 * profit_base + 0.25 * profit_high
+                uncertainty_ratio = (profit_high - profit_low) / max(abs(profit_base), 1.0)
+                offer_score = expected_incremental_profit * (1.0 + op["pair_similarity"]) / (1.0 + 0.25 * max(uncertainty_ratio, 0.0))
 
                 anchor_cat = op["anchor_category"]
                 pair_cat = op["pair_category"]
@@ -1785,10 +2389,19 @@ def make_outputs() -> None:
                     "branch_pair_share_pct": round(pair_branch_share * 100.0, 3),
                     "network_pair_share_pct": round(pair_net_share * 100.0, 3),
                     "attach_uplift_pct": round(attach_uplift_pct, 2),
-                    "estimated_incremental_revenue": round(estimated_incremental_revenue, 2),
-                    "estimated_incremental_profit": round(estimated_incremental_profit, 2),
+                    "estimated_incremental_revenue": round(rev_base, 2),
+                    "estimated_incremental_profit": round(profit_base, 2),
+                    "scenario_low_incremental_revenue": round(rev_low, 2),
+                    "scenario_low_incremental_profit": round(profit_low, 2),
+                    "scenario_base_incremental_revenue": round(rev_base, 2),
+                    "scenario_base_incremental_profit": round(profit_base, 2),
+                    "scenario_high_incremental_revenue": round(rev_high, 2),
+                    "scenario_high_incremental_profit": round(profit_high, 2),
+                    "expected_incremental_revenue": round(expected_incremental_revenue, 2),
+                    "expected_incremental_profit": round(expected_incremental_profit, 2),
+                    "uncertainty_ratio": round(float(max(uncertainty_ratio, 0.0)), 4),
                     "offer_score": round(offer_score, 4),
-                    "rationale": f"Under-indexed vs network by {max(under_index_gap,0)*100:.2f} pts; high affinity pair score.",
+                    "rationale": f"Under-indexed by {max(under_index_gap,0)*100:.2f} pts; scenario-weighted upside with uncertainty penalty.",
                 }
                 break
 
@@ -1822,9 +2435,46 @@ def make_outputs() -> None:
             "attach_uplift_pct",
             "estimated_incremental_revenue",
             "estimated_incremental_profit",
+            "scenario_low_incremental_revenue",
+            "scenario_low_incremental_profit",
+            "scenario_base_incremental_revenue",
+            "scenario_base_incremental_profit",
+            "scenario_high_incremental_revenue",
+            "scenario_high_incremental_profit",
+            "expected_incremental_revenue",
+            "expected_incremental_profit",
+            "uncertainty_ratio",
             "offer_score",
             "rationale",
         ],
+    )
+
+    opt_scenario_summary = [
+        {
+            "scenario": "low",
+            "total_incremental_revenue": round(sum(r["scenario_low_incremental_revenue"] for r in opt_branch_bundle_recommendations), 2),
+            "total_incremental_profit": round(sum(r["scenario_low_incremental_profit"] for r in opt_branch_bundle_recommendations), 2),
+        },
+        {
+            "scenario": "base",
+            "total_incremental_revenue": round(sum(r["scenario_base_incremental_revenue"] for r in opt_branch_bundle_recommendations), 2),
+            "total_incremental_profit": round(sum(r["scenario_base_incremental_profit"] for r in opt_branch_bundle_recommendations), 2),
+        },
+        {
+            "scenario": "high",
+            "total_incremental_revenue": round(sum(r["scenario_high_incremental_revenue"] for r in opt_branch_bundle_recommendations), 2),
+            "total_incremental_profit": round(sum(r["scenario_high_incremental_profit"] for r in opt_branch_bundle_recommendations), 2),
+        },
+        {
+            "scenario": "expected",
+            "total_incremental_revenue": round(sum(r["expected_incremental_revenue"] for r in opt_branch_bundle_recommendations), 2),
+            "total_incremental_profit": round(sum(r["expected_incremental_profit"] for r in opt_branch_bundle_recommendations), 2),
+        },
+    ]
+    write_csv(
+        os.path.join(OUT_TABLES, "opt_offer_scenario_summary.csv"),
+        opt_scenario_summary,
+        ["scenario", "total_incremental_revenue", "total_incremental_profit"],
     )
 
     # Narrative report
@@ -1874,6 +2524,11 @@ def make_outputs() -> None:
     network_sales_2025_total = sum(r["sales_2025"] for r in ml_network_forecast)
     network_forecast_yoy = pct_change(network_forecast_2026_total, network_sales_2025_total) if network_sales_2025_total > 0 else None
 
+    forecast_metrics_map = {r["model"]: r for r in forecast_backtest_metrics}
+    trend_bt = forecast_metrics_map.get("trend_walkforward", {})
+    naive_bt = forecast_metrics_map.get("naive_last_month", {})
+    ma3_bt = forecast_metrics_map.get("moving_avg_3", {})
+
     pred_rank = sorted(ml_branch_performance_prediction, key=lambda r: r["predicted_jan_runrate_yoy_pct"], reverse=True)
     pred_top = pred_rank[:3]
     pred_risk = pred_rank[-3:]
@@ -1884,8 +2539,10 @@ def make_outputs() -> None:
 
     opt_target_count = sum(1 for r in opt_target_branches if r["target_flag"] == 1)
     opt_offer_count = len(opt_branch_bundle_recommendations)
-    opt_total_incremental_profit = sum(r["estimated_incremental_profit"] for r in opt_branch_bundle_recommendations)
-    opt_total_incremental_revenue = sum(r["estimated_incremental_revenue"] for r in opt_branch_bundle_recommendations)
+    opt_total_incremental_profit = sum(r["expected_incremental_profit"] for r in opt_branch_bundle_recommendations)
+    opt_total_incremental_revenue = sum(r["expected_incremental_revenue"] for r in opt_branch_bundle_recommendations)
+    opt_total_incremental_profit_low = sum(r["scenario_low_incremental_profit"] for r in opt_branch_bundle_recommendations)
+    opt_total_incremental_profit_high = sum(r["scenario_high_incremental_profit"] for r in opt_branch_bundle_recommendations)
 
     pair_counter = defaultdict(int)
     for r in opt_branch_bundle_recommendations:
@@ -1949,7 +2606,21 @@ def make_outputs() -> None:
             f"- Time-series forecast (trend x seasonality, January-anchored) projects 2026 network sales at {network_forecast_2026_total:.0f} "
             f"vs {network_sales_2025_total:.0f} in 2025 (YoY {yoy_text}).\n"
         )
-        f.write(f"- Branch performance model (linear regression) uses margin/mix/volatility/anomaly features: R2={model_r2:.2f}, RMSE={model_rmse:.2f} YoY points (in-sample).\n")
+        f.write(
+            f"- Walk-forward backtest on 2025 monthly data: trend RMSE={trend_bt.get('rmse', 0.0):.2f}, "
+            f"naive-last-month RMSE={naive_bt.get('rmse', 0.0):.2f}, moving-avg-3 RMSE={ma3_bt.get('rmse', 0.0):.2f}.\n"
+        )
+        f.write(
+            f"- Branch performance ridge model (margin/mix/volatility/anomaly features): in-sample RMSE={model_rmse:.2f}, "
+            f"LOOCV RMSE={model_loocv_rmse:.2f} vs LOOCV baseline RMSE={baseline_loocv_rmse:.2f}; "
+            f"LOOCV Spearman={model_loocv_spearman:.2f}.\n"
+        )
+        f.write(
+            f"- Prediction bounds enforced at [{YOY_CLIP_MIN:.0f}%, {YOY_CLIP_MAX:.0f}%] with P90 absolute error band of ±{pred_error_p90:.1f} YoY points.\n"
+        )
+        f.write(
+            "- Signal and decision robustness: ranking stability (bootstrap Spearman, top-5 overlap), reduced-feature variant comparison (selection by Spearman), feature stability diagnostics (sign variance), and decision precision/recall for decline targeting are in ml_branch_ranking_stability.csv, ml_branch_model_variant_comparison.csv, ml_feature_stability_diagnostics.csv, ml_decision_precision_metrics.csv; affinity guardrails in opt_affinity_sensitivity.csv.\n"
+        )
         if pred_top:
             if pred_top[0]["predicted_jan_runrate_yoy_pct"] >= 0:
                 f.write("- Predicted strongest 2026 branch momentum: " + ", ".join([f"{r['branch']} ({r['predicted_jan_runrate_yoy_pct']:.1f}%)" for r in pred_top]) + "\n")
@@ -1973,10 +2644,13 @@ def make_outputs() -> None:
 
         f.write("\n## Optimization (Menu Engineering + Offer Engine)\n")
         f.write(
-            f"- ML prioritization flagged {opt_target_count} branches as low-sales or decline-risk (bottom-sales threshold {low_sales_threshold:.0f}).\n"
+            f"- ML prioritization selected {opt_target_count} branches by continuous priority score ("
+            f"{int(TARGET_PRIORITY_LOW_SALES_WEIGHT*100)}% low-sales intensity + {int(TARGET_PRIORITY_DECLINE_WEIGHT*100)}% decline risk), "
+            f"with execution budget set to top {int(TARGETING_BUDGET_PERCENTILE*100)}% of branches.\n"
         )
         f.write(
-            f"- Generated {opt_offer_count} branch-level bundle offers with estimated total upside of +{opt_total_incremental_revenue:.0f} revenue and +{opt_total_incremental_profit:.0f} gross profit units.\n"
+            f"- Generated {opt_offer_count} branch-level bundle offers with expected upside of +{opt_total_incremental_revenue:.0f} revenue and +{opt_total_incremental_profit:.0f} gross profit units "
+            f"(scenario profit range: +{opt_total_incremental_profit_low:.0f} to +{opt_total_incremental_profit_high:.0f}).\n"
         )
         f.write(f"- Most reusable product pair themes across branches: {top_pairs_text}.\n")
         f.write("- Offer logic: keep anchor products already strong in each branch, then attach high-affinity under-indexed pair items through combo pricing.\n")

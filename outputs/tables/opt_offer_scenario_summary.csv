@@ -1,0 +1,5 @@
+scenario,total_incremental_revenue,total_incremental_profit
+low,44825.56,32858.01
+base,74709.23,60740.1
+high,104592.92,92832.03
+expected,74709.23,61792.59

@@ -77,11 +77,16 @@ ml_branch_forecast = load_csv("ml_branch_monthly_forecast_2026.csv")
 ml_branch_perf = load_csv("ml_branch_performance_prediction.csv")
 ml_cluster = load_csv("ml_branch_clusters.csv")
 ml_metrics = load_csv("ml_branch_performance_model_metrics.csv")
+ml_forecast_backtest_metrics = load_csv("ml_forecast_backtest_metrics_2025.csv")
 ml_branch_archetypes = load_csv("ml_branch_archetypes.csv")
 ml_archetype_playbook = load_csv("ml_archetype_playbook.csv")
 opt_target_branches = load_csv("opt_target_branches.csv")
 opt_bundle_offers = load_csv("opt_branch_bundle_recommendations.csv")
 opt_pair_affinity = load_csv("opt_product_pair_affinity.csv")
+ml_ranking_stability = load_csv("ml_branch_ranking_stability.csv")
+ml_model_variants = load_csv("ml_branch_model_variant_comparison.csv")
+ml_decision_precision = load_csv("ml_decision_precision_metrics.csv")
+opt_affinity_sensitivity = load_csv("opt_affinity_sensitivity.csv")
 
 required = [
     ("kpi_january_yoy_by_branch.csv", jan),
@@ -275,7 +280,45 @@ with ml_right:
         mrow = ml_metrics.iloc[0]
         st.metric("Model R2 (in-sample)", f"{float(mrow['r2_in_sample']):.2f}")
         st.metric("Model RMSE (YoY pts)", f"{float(mrow['rmse_yoy_pct']):.2f}")
+        if "loocv_rmse_yoy_pct" in ml_metrics.columns:
+            st.metric("LOOCV RMSE (YoY pts)", f"{float(mrow['loocv_rmse_yoy_pct']):.2f}")
+        if "loocv_baseline_rmse_yoy_pct" in ml_metrics.columns:
+            st.metric("LOOCV Baseline RMSE", f"{float(mrow['loocv_baseline_rmse_yoy_pct']):.2f}")
         st.metric("Training Branches", f"{int(mrow['training_samples'])}")
+
+    if not ml_forecast_backtest_metrics.empty:
+        st.markdown("**Forecast Backtest (2025 Walk-Forward)**")
+        st.dataframe(ml_forecast_backtest_metrics, use_container_width=True)
+
+    if not ml_ranking_stability.empty and "mean_pairwise_spearman" in ml_ranking_stability.columns:
+        summary_row = ml_ranking_stability[ml_ranking_stability["branch"].astype(str).str.contains("summary", na=False)]
+        if not summary_row.empty:
+            r = summary_row.iloc[0]
+            st.markdown("**Ranking stability**")
+            st.caption("How consistent is the risk ordering across bootstrap resamples? Higher Spearman and top-5 overlap mean more stable prioritisation for resource allocation.")
+            try:
+                st.metric("Mean pairwise Spearman (bootstrap)", f"{float(r['mean_pairwise_spearman']):.2f}")
+            except (ValueError, TypeError):
+                pass
+            try:
+                st.metric("Mean top-5 risk overlap", f"{float(r['mean_top5_overlap']):.2f}")
+            except (ValueError, TypeError):
+                pass
+
+    if not ml_model_variants.empty:
+        cols = [c for c in ["model", "loocv_rmse_yoy_pct", "loocv_spearman_rank_corr", "selected_by_stability"] if c in ml_model_variants.columns]
+        if cols:
+            st.markdown("**Model variant comparison**")
+            st.caption("Full vs reduced-feature models. The selected variant is chosen by ranking stability (Spearman), not RMSE alone, to support more reliable prioritisation.")
+            st.dataframe(ml_model_variants[cols], use_container_width=True)
+
+    if not ml_decision_precision.empty and "precision" in ml_decision_precision.columns:
+        k5 = ml_decision_precision[ml_decision_precision["k"] == 5]
+        if not k5.empty:
+            st.markdown("**Decision precision (top-K decline)**")
+            st.caption("If we act on the top 5 predicted-decline branches: what share actually declined (precision) and what share of all decliners did we capture (recall)?")
+            st.metric("Precision", f"{float(k5.iloc[0]['precision']):.2%}")
+            st.metric("Recall", f"{float(k5.iloc[0]['recall']):.2%}")
 
     if not ml_branch_perf.empty:
         st.markdown("**Predicted Top Growth**")
@@ -347,6 +390,7 @@ if not ml_branch_forecast.empty:
     st.plotly_chart(fig_bf, use_container_width=True)
 
 st.subheader("Optimization: Menu Engineering + Offer Engine")
+st.caption("Scenario-based offer economics: each recommendation shows low / base / high incremental profit. Offers are restricted by similarity and support guardrails so upside is interpretable and conservative.")
 
 opt_l, opt_r = st.columns([1, 2])
 with opt_l:
@@ -370,13 +414,13 @@ with opt_r:
                 x="branch",
                 y="priority_score",
                 color="predicted_jan_runrate_yoy_pct",
-                title="Target Branch Priority Score (Low Sales + Decline Risk)",
+                title="Target Branch Priority Score (Least-Selling Branches)",
             )
             fig_t.update_layout(xaxis_title="", yaxis_title="Priority Score")
             st.plotly_chart(fig_t, use_container_width=True)
 
 if not opt_bundle_offers.empty:
-    st.markdown("**Branch Offer Recommendations**")
+    st.markdown("**Branch offer recommendations (scenario economics)**")
     branch_opts = sorted(opt_bundle_offers["branch"].dropna().unique().tolist())
     b_offer = st.selectbox("Offer Branch", branch_opts, key="opt_branch_sel")
     b_offers = opt_bundle_offers[opt_bundle_offers["branch"] == b_offer].copy()

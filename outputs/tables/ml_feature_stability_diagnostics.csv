@@ -1,0 +1,6 @@
+feature,coefficient_mean,coefficient_std,sign_stable,pct_positive_bootstrap
+annual_sales_2025,-3.452616,4.495642,0,31.2
+overall_margin_pct,-2.225859,6.358189,0,43.6
+beverage_share_pct,3.542923,6.292588,0,54.8
+cv_pct,-26.48911,8.815137,0,2.0
+anomaly_count_2025,0.311461,6.727245,0,65.6

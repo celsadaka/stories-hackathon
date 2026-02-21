@@ -1,2 +1,2 @@
-model,training_samples,features,r2_in_sample,rmse_yoy_pct
-linear_regression_jan_runrate_yoy,14,"annual_sales_2025,overall_margin_pct,beverage_share_pct,cv_pct,anomaly_count_2025",0.806,13.9365
+model,training_samples,features,r2_in_sample,rmse_yoy_pct,mae_yoy_pct,baseline_rmse_yoy_pct,baseline_mae_yoy_pct,loocv_rmse_yoy_pct,loocv_mae_yoy_pct,loocv_baseline_rmse_yoy_pct,loocv_baseline_mae_yoy_pct,loocv_spearman_rank_corr,prediction_abs_error_p90,coef_stability_score_median,prediction_bounds
+ridge_regression_jan_runrate_yoy,14,"annual_sales_2025,overall_margin_pct,beverage_share_pct,cv_pct,anomaly_count_2025",0.7782,14.1767,11.2825,30.1041,23.3324,26.1036,20.1453,32.4198,25.1273,-0.0968,43.1504,0.563,"[-95,95]"
